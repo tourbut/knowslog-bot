@@ -130,7 +130,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 {
   "agents": {
     "defaults": {
-      "workspace": "/root/openclaw"
+      "workspace": "/root/openclaw/workspace"
     }
   },
   "gateway": {
