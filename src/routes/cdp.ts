@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { AppEnv, MoltbotEnv } from '../types';
+import type { AppEnv, OpenClawEnv } from '../types';
 import puppeteer, { type Browser, type Page } from '@cloudflare/puppeteer';
 
 /**
@@ -197,7 +197,7 @@ cdp.get('/', async (c) => {
 /**
  * GET /json/version - CDP discovery endpoint
  * 
- * Returns browser version info and WebSocket URL for Moltbot/Playwright compatibility.
+ * Returns browser version info and WebSocket URL for Openclaw/Playwright compatibility.
  * Authentication: Pass secret as query param `?secret=<CDP_SECRET>`
  */
 cdp.get('/json/version', async (c) => {
@@ -241,7 +241,7 @@ cdp.get('/json/version', async (c) => {
 /**
  * GET /json/list - List available targets (tabs)
  * 
- * Returns a list of available browser targets for Moltbot/Playwright compatibility.
+ * Returns a list of available browser targets for Openclaw/Playwright compatibility.
  * Note: Since we create targets on-demand per WebSocket connection, this returns
  * a placeholder target that will be created when connecting.
  * Authentication: Pass secret as query param `?secret=<CDP_SECRET>`
@@ -295,7 +295,7 @@ cdp.get('/json', async (c) => {
   // Redirect internally to /json/list handler
   const url = new URL(c.req.url);
   url.pathname = url.pathname.replace(/\/json\/?$/, '/json/list');
-  
+
   // Verify secret from query param
   const providedSecret = url.searchParams.get('secret');
   const expectedSecret = c.env.CDP_SECRET;
@@ -338,7 +338,7 @@ cdp.get('/json', async (c) => {
 /**
  * Initialize a CDP session for a WebSocket connection
  */
-async function initCDPSession(ws: WebSocket, env: MoltbotEnv): Promise<void> {
+async function initCDPSession(ws: WebSocket, env: OpenClawEnv): Promise<void> {
   let session: CDPSession | null = null;
 
   try {
@@ -429,7 +429,7 @@ async function handleCDPMethod(
   ws: WebSocket
 ): Promise<unknown> {
   const [domain, command] = method.split('.');
-  
+
   // Get the current page (use targetId from params or default)
   const targetId = (params.targetId as string) || session.defaultTargetId;
   const page = session.pages.get(targetId);
@@ -437,37 +437,37 @@ async function handleCDPMethod(
   switch (domain) {
     case 'Browser':
       return handleBrowser(session, command, params);
-    
+
     case 'Target':
       return handleTarget(session, command, params, ws);
-    
+
     case 'Page':
       if (!page) throw new Error(`Target not found: ${targetId}`);
       return handlePage(session, page, command, params, ws);
-    
+
     case 'Runtime':
       if (!page) throw new Error(`Target not found: ${targetId}`);
       return handleRuntime(session, page, command, params);
-    
+
     case 'DOM':
       if (!page) throw new Error(`Target not found: ${targetId}`);
       return handleDOM(session, page, command, params);
-    
+
     case 'Input':
       if (!page) throw new Error(`Target not found: ${targetId}`);
       return handleInput(page, command, params);
-    
+
     case 'Network':
       return handleNetwork(session, page, command, params);
-    
+
     case 'Emulation':
       if (!page) throw new Error(`Target not found: ${targetId}`);
       return handleEmulation(page, command, params);
-    
+
     case 'Fetch':
       if (!page) throw new Error(`Target not found: ${targetId}`);
       return handleFetch(session, page, command, params, ws);
-    
+
     default:
       throw new Error(`Unknown domain: ${domain}`);
   }
@@ -490,11 +490,11 @@ async function handleBrowser(
         userAgent: 'Mozilla/5.0 Cloudflare Browser Rendering',
         jsVersion: 'V8',
       };
-    
+
     case 'close':
       await session.browser.close();
       return {};
-    
+
     default:
       throw new Error(`Unknown Browser method: ${command}`);
   }
@@ -514,13 +514,13 @@ async function handleTarget(
       const url = (params.url as string) || 'about:blank';
       const page = await session.browser.newPage();
       const targetId = crypto.randomUUID();
-      
+
       session.pages.set(targetId, page);
-      
+
       if (url !== 'about:blank') {
         await page.goto(url);
       }
-      
+
       sendEvent(ws, 'Target.targetCreated', {
         targetInfo: {
           targetId,
@@ -530,26 +530,26 @@ async function handleTarget(
           attached: true,
         },
       });
-      
+
       return { targetId };
     }
-    
+
     case 'closeTarget': {
       const targetId = params.targetId as string;
       const page = session.pages.get(targetId);
-      
+
       if (!page) {
         throw new Error(`Target not found: ${targetId}`);
       }
-      
+
       await page.close();
       session.pages.delete(targetId);
-      
+
       sendEvent(ws, 'Target.targetDestroyed', { targetId });
-      
+
       return { success: true };
     }
-    
+
     case 'getTargets': {
       const targets = [];
       for (const [targetId, page] of session.pages) {
@@ -563,11 +563,11 @@ async function handleTarget(
       }
       return { targetInfos: targets };
     }
-    
+
     case 'attachToTarget':
       // Already attached
       return { sessionId: params.targetId };
-    
+
     default:
       throw new Error(`Unknown Target method: ${command}`);
   }
@@ -587,11 +587,11 @@ async function handlePage(
     case 'navigate': {
       const url = params.url as string;
       if (!url) throw new Error('url is required');
-      
+
       const response = await page.goto(url, {
         waitUntil: 'load',
       });
-      
+
       sendEvent(ws, 'Page.frameNavigated', {
         frame: {
           id: session.defaultTargetId,
@@ -600,23 +600,23 @@ async function handlePage(
           mimeType: 'text/html',
         },
       });
-      
+
       sendEvent(ws, 'Page.loadEventFired', {
         timestamp: Date.now() / 1000,
       });
-      
+
       return {
         frameId: session.defaultTargetId,
         loaderId: crypto.randomUUID(),
         errorText: response?.ok() ? undefined : 'Navigation failed',
       };
     }
-    
+
     case 'reload': {
       await page.reload();
       return {};
     }
-    
+
     case 'getFrameTree': {
       return {
         frameTree: {
@@ -631,12 +631,12 @@ async function handlePage(
         },
       };
     }
-    
+
     case 'captureScreenshot': {
       const format = (params.format as string) || 'png';
       const quality = params.quality as number | undefined;
       const clip = params.clip as { x: number; y: number; width: number; height: number } | undefined;
-      
+
       const data = await page.screenshot({
         type: format as 'png' | 'jpeg' | 'webp',
         encoding: 'base64',
@@ -644,10 +644,10 @@ async function handlePage(
         clip: clip,
         fullPage: params.fullPage as boolean | undefined,
       });
-      
+
       return { data };
     }
-    
+
     case 'getLayoutMetrics': {
       const metrics = await page.evaluate(() => ({
         width: document.documentElement.scrollWidth,
@@ -655,7 +655,7 @@ async function handlePage(
         clientWidth: document.documentElement.clientWidth,
         clientHeight: document.documentElement.clientHeight,
       }));
-      
+
       return {
         layoutViewport: {
           pageX: 0,
@@ -680,25 +680,25 @@ async function handlePage(
         },
       };
     }
-    
+
     case 'bringToFront':
       await page.bringToFront();
       return {};
-    
+
     case 'setContent': {
       const html = params.html as string;
       if (!html) throw new Error('html is required');
-      
+
       await page.setContent(html, {
         waitUntil: (params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2') || 'load',
       });
-      
+
       return {};
     }
-    
+
     case 'printToPDF': {
       const options: Parameters<typeof page.pdf>[0] = {};
-      
+
       if (params.landscape) options.landscape = params.landscape as boolean;
       if (params.displayHeaderFooter) options.displayHeaderFooter = params.displayHeaderFooter as boolean;
       if (params.printBackground) options.printBackground = params.printBackground as boolean;
@@ -713,38 +713,38 @@ async function handlePage(
       if (params.headerTemplate) options.headerTemplate = params.headerTemplate as string;
       if (params.footerTemplate) options.footerTemplate = params.footerTemplate as string;
       if (params.preferCSSPageSize) options.preferCSSPageSize = params.preferCSSPageSize as boolean;
-      
+
       const buffer = await page.pdf(options);
       // Convert to base64
       const data = typeof buffer === 'string' ? buffer : Buffer.from(buffer).toString('base64');
-      
+
       return { data };
     }
-    
+
     case 'addScriptToEvaluateOnNewDocument': {
       const source = params.source as string;
       if (!source) throw new Error('source is required');
-      
+
       const identifier = crypto.randomUUID();
       session.scriptsToEvaluateOnNewDocument.set(identifier, source);
-      
+
       // Add to the page via evaluateOnNewDocument
       await page.evaluateOnNewDocument(source);
-      
+
       return { identifier };
     }
-    
+
     case 'removeScriptToEvaluateOnNewDocument': {
       const identifier = params.identifier as string;
       session.scriptsToEvaluateOnNewDocument.delete(identifier);
       // Note: Can't actually remove already-added scripts in Puppeteer
       return {};
     }
-    
+
     case 'handleJavaScriptDialog': {
       const accept = params.accept as boolean;
       const promptText = params.promptText as string | undefined;
-      
+
       // Puppeteer auto-handles dialogs, but we can configure the page
       page.on('dialog', async (dialog) => {
         if (accept) {
@@ -753,15 +753,15 @@ async function handlePage(
           await dialog.dismiss();
         }
       });
-      
+
       return {};
     }
-    
+
     case 'stopLoading': {
       await page.evaluate(() => window.stop());
       return {};
     }
-    
+
     case 'getNavigationHistory': {
       const history = await page.evaluate(() => ({
         currentIndex: window.history.length - 1,
@@ -773,10 +773,10 @@ async function handlePage(
           transitionType: 'typed',
         }],
       }));
-      
+
       return history;
     }
-    
+
     case 'navigateToHistoryEntry': {
       const entryId = params.entryId as number;
       // Simple implementation - just go back/forward
@@ -784,21 +784,21 @@ async function handlePage(
         const delta = id - (window.history.length - 1);
         window.history.go(delta);
       }, entryId);
-      
+
       return {};
     }
-    
+
     case 'setBypassCSP': {
       const enabled = params.enabled as boolean;
       await page.setBypassCSP(enabled);
       return {};
     }
-    
+
     case 'enable':
     case 'disable':
       // No-op, events always enabled
       return {};
-    
+
     default:
       throw new Error(`Unknown Page method: ${command}`);
   }
@@ -817,25 +817,25 @@ async function handleRuntime(
     case 'evaluate': {
       const expression = params.expression as string;
       if (!expression) throw new Error('expression is required');
-      
+
       const returnByValue = params.returnByValue ?? true;
       const awaitPromise = params.awaitPromise ?? false;
-      
+
       try {
         // Wrap in async IIFE if awaitPromise is true
-        const wrappedExpression = awaitPromise 
+        const wrappedExpression = awaitPromise
           ? `(async () => { return ${expression}; })()`
           : expression;
-        
+
         const result = await page.evaluate(wrappedExpression);
-        
+
         // Store object reference if not returning by value
         let objectId: string | undefined;
         if (!returnByValue && result !== null && typeof result === 'object') {
           objectId = `obj-${session.objectIdCounter++}`;
           session.objectMap.set(objectId, result);
         }
-        
+
         return {
           result: {
             type: typeof result,
@@ -857,12 +857,12 @@ async function handleRuntime(
         };
       }
     }
-    
+
     case 'callFunctionOn': {
       const functionDeclaration = params.functionDeclaration as string;
       const args = (params.arguments as Array<{ value?: unknown; objectId?: string }>) || [];
       const returnByValue = params.returnByValue ?? true;
-      
+
       try {
         // Resolve object references in arguments
         const argValues = args.map(a => {
@@ -871,16 +871,16 @@ async function handleRuntime(
           }
           return a.value;
         });
-        
+
         const fn = new Function(`return (${functionDeclaration}).apply(this, arguments)`);
         const result = await page.evaluate(fn as () => unknown, ...argValues);
-        
+
         let objectId: string | undefined;
         if (!returnByValue && result !== null && typeof result === 'object') {
           objectId = `obj-${session.objectIdCounter++}`;
           session.objectMap.set(objectId, result);
         }
-        
+
         return {
           result: {
             type: typeof result,
@@ -900,16 +900,16 @@ async function handleRuntime(
         };
       }
     }
-    
+
     case 'getProperties': {
       const objectId = params.objectId as string;
       const ownProperties = params.ownProperties ?? true;
-      
+
       const obj = session.objectMap.get(objectId);
       if (!obj || typeof obj !== 'object') {
         return { result: [] };
       }
-      
+
       const properties: Array<{
         name: string;
         value: { type: string; value?: unknown; description?: string };
@@ -918,13 +918,13 @@ async function handleRuntime(
         enumerable?: boolean;
         isOwn?: boolean;
       }> = [];
-      
+
       const keys = ownProperties ? Object.getOwnPropertyNames(obj) : Object.keys(obj as object);
-      
+
       for (const key of keys) {
         const value = (obj as Record<string, unknown>)[key];
         const descriptor = Object.getOwnPropertyDescriptor(obj, key);
-        
+
         properties.push({
           name: key,
           value: {
@@ -938,26 +938,26 @@ async function handleRuntime(
           isOwn: true,
         });
       }
-      
+
       return { result: properties };
     }
-    
+
     case 'releaseObject': {
       const objectId = params.objectId as string;
       session.objectMap.delete(objectId);
       return {};
     }
-    
+
     case 'releaseObjectGroup': {
       // Release all objects (simplified - we don't track groups)
       session.objectMap.clear();
       return {};
     }
-    
+
     case 'enable':
     case 'disable':
       return {};
-    
+
     default:
       throw new Error(`Unknown Runtime method: ${command}`);
   }
@@ -975,7 +975,7 @@ async function handleDOM(
   switch (command) {
     case 'getDocument': {
       const depth = (params.depth as number) ?? 1;
-      
+
       // Get basic document structure
       const doc = await page.evaluate((maxDepth: number) => {
         function serializeNode(node: Node, currentDepth: number): unknown {
@@ -986,13 +986,13 @@ async function handleDOM(
             localName: node.nodeName.toLowerCase(),
             nodeValue: node.nodeValue || '',
           };
-          
+
           if (node instanceof Element) {
             base.attributes = [];
             for (const attr of node.attributes) {
               (base.attributes as string[]).push(attr.name, attr.value);
             }
-            
+
             if (currentDepth < maxDepth && node.children.length > 0) {
               base.children = [];
               for (const child of node.children) {
@@ -1003,17 +1003,17 @@ async function handleDOM(
               base.childNodeCount = node.children.length;
             }
           }
-          
+
           return base;
         }
-        
+
         return serializeNode(document.documentElement, 0);
       }, depth);
-      
+
       // Create a stable root nodeId
       const rootNodeId = session.nodeIdCounter++;
       session.nodeMap.set(rootNodeId, 'html');
-      
+
       return {
         root: {
           nodeId: rootNodeId,
@@ -1029,60 +1029,60 @@ async function handleDOM(
         },
       };
     }
-    
+
     case 'querySelector': {
       const selector = params.selector as string;
       if (!selector) throw new Error('selector is required');
-      
+
       const element = await page.$(selector);
       if (!element) {
         return { nodeId: 0 };
       }
-      
+
       const nodeId = session.nodeIdCounter++;
       session.nodeMap.set(nodeId, selector);
-      
+
       return { nodeId };
     }
-    
+
     case 'querySelectorAll': {
       const selector = params.selector as string;
       if (!selector) throw new Error('selector is required');
-      
+
       const elements = await page.$$(selector);
       const nodeIds = elements.map((_, i) => {
         const nodeId = session.nodeIdCounter++;
         session.nodeMap.set(nodeId, `${selector}:nth-of-type(${i + 1})`);
         return nodeId;
       });
-      
+
       return { nodeIds };
     }
-    
+
     case 'getOuterHTML': {
       const nodeId = params.nodeId as number;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) {
         // Try to get document HTML
         const html = await page.content();
         return { outerHTML: html };
       }
-      
+
       const html = await page.evaluate((sel: string) => {
         const el = document.querySelector(sel);
         return el ? el.outerHTML : '';
       }, selector);
-      
+
       return { outerHTML: html };
     }
-    
+
     case 'getAttributes': {
       const nodeId = params.nodeId as number;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       const attributes = await page.evaluate((sel: string) => {
         const el = document.querySelector(sel);
         if (!el) return [];
@@ -1092,50 +1092,50 @@ async function handleDOM(
         }
         return attrs;
       }, selector);
-      
+
       return { attributes };
     }
-    
+
     case 'setAttributeValue': {
       const nodeId = params.nodeId as number;
       const name = params.name as string;
       const value = params.value as string;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       await page.evaluate((sel: string, attrName: string, attrValue: string) => {
         const el = document.querySelector(sel);
         if (el) el.setAttribute(attrName, attrValue);
       }, selector, name, value);
-      
+
       return {};
     }
-    
+
     case 'focus': {
       const nodeId = params.nodeId as number;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       await page.focus(selector);
       return {};
     }
-    
+
     case 'getBoxModel': {
       const nodeId = params.nodeId as number;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       const boxModel = await page.evaluate((sel: string) => {
         const el = document.querySelector(sel);
         if (!el) return null;
-        
+
         const rect = el.getBoundingClientRect();
         const scrollX = window.scrollX;
         const scrollY = window.scrollY;
-        
+
         // Content box (innermost)
         const style = window.getComputedStyle(el);
         const paddingTop = parseFloat(style.paddingTop);
@@ -1146,48 +1146,48 @@ async function handleDOM(
         const borderRight = parseFloat(style.borderRightWidth);
         const borderBottom = parseFloat(style.borderBottomWidth);
         const borderLeft = parseFloat(style.borderLeftWidth);
-        
+
         const content = {
           x: rect.left + scrollX + borderLeft + paddingLeft,
           y: rect.top + scrollY + borderTop + paddingTop,
           width: rect.width - borderLeft - borderRight - paddingLeft - paddingRight,
           height: rect.height - borderTop - borderBottom - paddingTop - paddingBottom,
         };
-        
+
         const padding = {
           x: rect.left + scrollX + borderLeft,
           y: rect.top + scrollY + borderTop,
           width: rect.width - borderLeft - borderRight,
           height: rect.height - borderTop - borderBottom,
         };
-        
+
         const border = {
           x: rect.left + scrollX,
           y: rect.top + scrollY,
           width: rect.width,
           height: rect.height,
         };
-        
+
         // Margin box
         const marginTop = parseFloat(style.marginTop);
         const marginRight = parseFloat(style.marginRight);
         const marginBottom = parseFloat(style.marginBottom);
         const marginLeft = parseFloat(style.marginLeft);
-        
+
         const margin = {
           x: rect.left + scrollX - marginLeft,
           y: rect.top + scrollY - marginTop,
           width: rect.width + marginLeft + marginRight,
           height: rect.height + marginTop + marginBottom,
         };
-        
+
         return { content, padding, border, margin };
       }, selector);
-      
+
       if (!boxModel) {
         throw new Error(`Element not found: ${selector}`);
       }
-      
+
       // Convert to quad format (4 points: top-left, top-right, bottom-right, bottom-left)
       const toQuad = (box: { x: number; y: number; width: number; height: number }) => [
         box.x, box.y,
@@ -1195,7 +1195,7 @@ async function handleDOM(
         box.x + box.width, box.y + box.height,
         box.x, box.y + box.height,
       ];
-      
+
       return {
         model: {
           content: toQuad(boxModel.content),
@@ -1207,78 +1207,78 @@ async function handleDOM(
         },
       };
     }
-    
+
     case 'scrollIntoViewIfNeeded': {
       const nodeId = params.nodeId as number;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       await page.evaluate((sel: string) => {
         const el = document.querySelector(sel);
         if (el) {
           el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
         }
       }, selector);
-      
+
       return {};
     }
-    
+
     case 'removeNode': {
       const nodeId = params.nodeId as number;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       await page.evaluate((sel: string) => {
         const el = document.querySelector(sel);
         if (el && el.parentNode) {
           el.parentNode.removeChild(el);
         }
       }, selector);
-      
+
       session.nodeMap.delete(nodeId);
       return {};
     }
-    
+
     case 'setNodeValue': {
       const nodeId = params.nodeId as number;
       const value = params.value as string;
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       await page.evaluate((sel: string, val: string) => {
         const el = document.querySelector(sel);
         if (el) {
           el.textContent = val;
         }
       }, selector, value);
-      
+
       return {};
     }
-    
+
     case 'setFileInputFiles': {
       const nodeId = params.nodeId as number;
       const files = params.files as string[];
       const selector = session.nodeMap.get(nodeId);
-      
+
       if (!selector) throw new Error(`Node not found: ${nodeId}`);
-      
+
       const element = await page.$(selector);
       if (element) {
         // Cast to input element handle for uploadFile
         const inputElement = element as unknown as { uploadFile: (...paths: string[]) => Promise<void> };
         await inputElement.uploadFile(...files);
       }
-      
+
       return {};
     }
-    
+
     case 'enable':
     case 'disable':
       return {};
-    
+
     default:
       throw new Error(`Unknown DOM method: ${command}`);
   }
@@ -1299,9 +1299,9 @@ async function handleInput(
       const y = params.y as number;
       const button = (params.button as string) || 'left';
       const clickCount = (params.clickCount as number) || 1;
-      
+
       const mouse = page.mouse;
-      
+
       switch (type) {
         case 'mousePressed':
           await mouse.down({ button: button as 'left' | 'right' | 'middle' });
@@ -1317,25 +1317,25 @@ async function handleInput(
           break;
         default:
           // For click, do move + down + up
-          await mouse.click(x, y, { 
+          await mouse.click(x, y, {
             button: button as 'left' | 'right' | 'middle',
             clickCount,
           });
       }
-      
+
       return {};
     }
-    
+
     case 'dispatchKeyEvent': {
       const type = params.type as string;
       const key = params.key as string;
       const text = params.text as string;
-      
+
       const keyboard = page.keyboard;
-      
+
       // Type assertion needed as CDP uses string keys while Puppeteer uses KeyInput
       type KeyInput = Parameters<typeof keyboard.down>[0];
-      
+
       switch (type) {
         case 'keyDown':
           await keyboard.down(key as KeyInput);
@@ -1349,10 +1349,10 @@ async function handleInput(
         default:
           if (key) await keyboard.press(key as KeyInput);
       }
-      
+
       return {};
     }
-    
+
     case 'insertText': {
       const text = params.text as string;
       if (text) {
@@ -1360,7 +1360,7 @@ async function handleInput(
       }
       return {};
     }
-    
+
     default:
       throw new Error(`Unknown Input method: ${command}`);
   }
@@ -1380,34 +1380,34 @@ async function handleNetwork(
     case 'disable':
       // Network events not fully supported, no-op
       return {};
-    
+
     case 'setCacheDisabled': {
       if (page) {
         await page.setCacheEnabled(!(params.cacheDisabled as boolean));
       }
       return {};
     }
-    
+
     case 'setExtraHTTPHeaders': {
       const headers = params.headers as Record<string, string>;
-      
+
       // Store headers in session
       session.extraHTTPHeaders.clear();
       for (const [name, value] of Object.entries(headers)) {
         session.extraHTTPHeaders.set(name, value);
       }
-      
+
       // Apply to page
       if (page) {
         await page.setExtraHTTPHeaders(headers);
       }
-      
+
       return {};
     }
-    
+
     case 'setCookie': {
       if (!page) throw new Error('No page available');
-      
+
       const cookie = {
         name: params.name as string,
         value: params.value as string,
@@ -1419,15 +1419,15 @@ async function handleNetwork(
         sameSite: params.sameSite as 'Strict' | 'Lax' | 'None' | undefined,
         expires: params.expires as number | undefined,
       };
-      
+
       await page.setCookie(cookie);
-      
+
       return { success: true };
     }
-    
+
     case 'setCookies': {
       if (!page) throw new Error('No page available');
-      
+
       const cookies = params.cookies as Array<{
         name: string;
         value: string;
@@ -1439,18 +1439,18 @@ async function handleNetwork(
         sameSite?: 'Strict' | 'Lax' | 'None';
         expires?: number;
       }>;
-      
+
       await page.setCookie(...cookies);
-      
+
       return {};
     }
-    
+
     case 'getCookies': {
       if (!page) throw new Error('No page available');
-      
+
       const urls = params.urls as string[] | undefined;
       const cookies = await page.cookies(...(urls || []));
-      
+
       return {
         cookies: cookies.map(c => ({
           name: c.name,
@@ -1466,46 +1466,46 @@ async function handleNetwork(
         })),
       };
     }
-    
+
     case 'deleteCookies': {
       if (!page) throw new Error('No page available');
-      
+
       const name = params.name as string;
       const url = params.url as string | undefined;
       const domain = params.domain as string | undefined;
       const path = params.path as string | undefined;
-      
+
       await page.deleteCookie({
         name,
         url,
         domain,
         path,
       });
-      
+
       return {};
     }
-    
+
     case 'clearBrowserCookies': {
       if (!page) throw new Error('No page available');
-      
+
       // Get all cookies and delete them
       const cookies = await page.cookies();
       for (const cookie of cookies) {
         await page.deleteCookie(cookie);
       }
-      
+
       return {};
     }
-    
+
     case 'setUserAgentOverride': {
       if (!page) throw new Error('No page available');
-      
+
       const userAgent = params.userAgent as string;
       await page.setUserAgent(userAgent);
-      
+
       return {};
     }
-    
+
     default:
       throw new Error(`Unknown Network method: ${command}`);
   }
@@ -1525,33 +1525,33 @@ async function handleEmulation(
       const height = params.height as number;
       const deviceScaleFactor = (params.deviceScaleFactor as number) || 1;
       const mobile = (params.mobile as boolean) || false;
-      
+
       await page.setViewport({
         width,
         height,
         deviceScaleFactor,
         isMobile: mobile,
       });
-      
+
       return {};
     }
-    
+
     case 'setUserAgentOverride': {
       const userAgent = params.userAgent as string;
       await page.setUserAgent(userAgent);
       return {};
     }
-    
+
     case 'clearDeviceMetricsOverride':
       // Reset to default
       await page.setViewport({ width: 1280, height: 720 });
       return {};
-    
+
     case 'setGeolocationOverride': {
       const latitude = params.latitude as number | undefined;
       const longitude = params.longitude as number | undefined;
       const accuracy = params.accuracy as number | undefined;
-      
+
       if (latitude !== undefined && longitude !== undefined) {
         await page.setGeolocation({
           latitude,
@@ -1559,39 +1559,39 @@ async function handleEmulation(
           accuracy: accuracy ?? 100,
         });
       }
-      
+
       return {};
     }
-    
+
     case 'clearGeolocationOverride': {
       // Can't truly clear, but we can set to a default
       return {};
     }
-    
+
     case 'setTimezoneOverride': {
       const timezoneId = params.timezoneId as string;
-      
+
       // Puppeteer doesn't have direct timezone override, but we can emulate via evaluate
       await page.evaluateOnNewDocument((tz: string) => {
         // Override Date to use the specified timezone
         const originalDate = Date;
         const originalToString = Date.prototype.toString;
         const originalToLocaleString = Date.prototype.toLocaleString;
-        
-        Date.prototype.toString = function() {
+
+        Date.prototype.toString = function () {
           return originalToLocaleString.call(this, 'en-US', { timeZone: tz });
         };
-        
+
         // Store timezone for scripts that check it
         (globalThis as unknown as Record<string, string>).__timezone = tz;
       }, timezoneId);
-      
+
       return {};
     }
-    
+
     case 'setTouchEmulationEnabled': {
       const enabled = params.enabled as boolean;
-      
+
       // Puppeteer handles this via viewport isMobile, but we can also inject touch events
       if (enabled) {
         await page.evaluateOnNewDocument(() => {
@@ -1599,45 +1599,45 @@ async function handleEmulation(
           Object.defineProperty(navigator, 'maxTouchPoints', {
             get: () => 1,
           });
-          
+
           // Add touch event support indicator
           window.ontouchstart = null;
         });
       }
-      
+
       return {};
     }
-    
+
     case 'setEmulatedMedia': {
       const media = params.media as string | undefined;
       const features = params.features as Array<{ name: string; value: string }> | undefined;
-      
+
       if (media) {
         await page.emulateMediaType(media as 'screen' | 'print');
       }
-      
+
       if (features) {
         await page.emulateMediaFeatures(
           features.map(f => ({ name: f.name, value: f.value }))
         );
       }
-      
+
       return {};
     }
-    
+
     case 'setDefaultBackgroundColorOverride': {
       const color = params.color as { r: number; g: number; b: number; a?: number } | undefined;
-      
+
       if (color) {
         const { r, g, b, a = 1 } = color;
         await page.evaluate((rgba: string) => {
           document.documentElement.style.backgroundColor = rgba;
         }, `rgba(${r}, ${g}, ${b}, ${a})`);
       }
-      
+
       return {};
     }
-    
+
     default:
       throw new Error(`Unknown Emulation method: ${command}`);
   }
@@ -1656,20 +1656,20 @@ async function handleFetch(
   switch (command) {
     case 'enable': {
       const patterns = params.patterns as Array<{ urlPattern?: string; requestStage?: string }> | undefined;
-      
+
       session.requestInterceptionEnabled = true;
-      
+
       // Set up request interception
       await page.setRequestInterception(true);
-      
+
       page.on('request', async (request) => {
         if (!session.requestInterceptionEnabled) {
           await request.continue();
           return;
         }
-        
+
         const requestId = crypto.randomUUID();
-        
+
         // Check if request matches patterns
         let shouldIntercept = !patterns || patterns.length === 0;
         if (patterns) {
@@ -1680,14 +1680,14 @@ async function handleFetch(
             }
           }
         }
-        
+
         if (shouldIntercept) {
           // Store the request for later handling
           session.pendingRequests.set(requestId, {
             request: request as unknown as Request,
-            resolve: () => {},
+            resolve: () => { },
           });
-          
+
           // Send Fetch.requestPaused event
           sendEvent(ws, 'Fetch.requestPaused', {
             requestId,
@@ -1704,30 +1704,30 @@ async function handleFetch(
           await request.continue();
         }
       });
-      
+
       return {};
     }
-    
+
     case 'disable': {
       session.requestInterceptionEnabled = false;
       await page.setRequestInterception(false);
       return {};
     }
-    
+
     case 'continueRequest': {
       const requestId = params.requestId as string;
       const url = params.url as string | undefined;
       const method = params.method as string | undefined;
       const postData = params.postData as string | undefined;
       const headers = params.headers as Array<{ name: string; value: string }> | undefined;
-      
+
       const pending = session.pendingRequests.get(requestId);
       if (!pending) {
         throw new Error(`Request not found: ${requestId}`);
       }
-      
+
       const request = pending.request as unknown as { continue: (opts?: Record<string, unknown>) => Promise<void> };
-      
+
       const overrides: Record<string, unknown> = {};
       if (url) overrides.url = url;
       if (method) overrides.method = method;
@@ -1738,75 +1738,75 @@ async function handleFetch(
           return acc;
         }, {} as Record<string, string>);
       }
-      
+
       await request.continue(Object.keys(overrides).length > 0 ? overrides : undefined);
       session.pendingRequests.delete(requestId);
-      
+
       return {};
     }
-    
+
     case 'fulfillRequest': {
       const requestId = params.requestId as string;
       const responseCode = params.responseCode as number;
       const responseHeaders = params.responseHeaders as Array<{ name: string; value: string }> | undefined;
       const body = params.body as string | undefined;
-      
+
       const pending = session.pendingRequests.get(requestId);
       if (!pending) {
         throw new Error(`Request not found: ${requestId}`);
       }
-      
+
       const request = pending.request as unknown as { respond: (opts: Record<string, unknown>) => Promise<void> };
-      
+
       const headers: Record<string, string> = {};
       if (responseHeaders) {
         for (const h of responseHeaders) {
           headers[h.name] = h.value;
         }
       }
-      
+
       await request.respond({
         status: responseCode,
         headers,
         body: body ? Buffer.from(body, 'base64') : undefined,
       });
-      
+
       session.pendingRequests.delete(requestId);
-      
+
       return {};
     }
-    
+
     case 'failRequest': {
       const requestId = params.requestId as string;
       const errorReason = params.errorReason as string;
-      
+
       const pending = session.pendingRequests.get(requestId);
       if (!pending) {
         throw new Error(`Request not found: ${requestId}`);
       }
-      
+
       const request = pending.request as unknown as { abort: (reason?: string) => Promise<void> };
-      
+
       // Map CDP error reasons to Puppeteer abort reasons
       const abortReason = errorReason.toLowerCase().includes('access') ? 'accessdenied' :
-                         errorReason.toLowerCase().includes('address') ? 'addressunreachable' :
-                         errorReason.toLowerCase().includes('blocked') ? 'blockedbyclient' :
-                         errorReason.toLowerCase().includes('connection') ? 'connectionfailed' :
-                         errorReason.toLowerCase().includes('timeout') ? 'timedout' :
-                         'failed';
-      
+        errorReason.toLowerCase().includes('address') ? 'addressunreachable' :
+          errorReason.toLowerCase().includes('blocked') ? 'blockedbyclient' :
+            errorReason.toLowerCase().includes('connection') ? 'connectionfailed' :
+              errorReason.toLowerCase().includes('timeout') ? 'timedout' :
+                'failed';
+
       await request.abort(abortReason);
       session.pendingRequests.delete(requestId);
-      
+
       return {};
     }
-    
+
     case 'getResponseBody': {
       // This would need to store response bodies, which we're not currently doing
       // Return empty for now
       return { body: '', base64Encoded: false };
     }
-    
+
     default:
       throw new Error(`Unknown Fetch method: ${command}`);
   }
@@ -1843,7 +1843,7 @@ function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) {
     return false;
   }
-  
+
   let result = 0;
   for (let i = 0; i < a.length; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i);

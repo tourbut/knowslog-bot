@@ -1,5 +1,5 @@
 import type { Context, Next } from 'hono';
-import type { AppEnv, MoltbotEnv } from '../types';
+import type { AppEnv, OpenClawEnv } from '../types';
 import { verifyAccessJWT } from './jwt';
 
 /**
@@ -15,14 +15,14 @@ export interface AccessMiddlewareOptions {
 /**
  * Check if running in development mode (skips CF Access auth + device pairing)
  */
-export function isDevMode(env: MoltbotEnv): boolean {
+export function isDevMode(env: OpenClawEnv): boolean {
   return env.DEV_MODE === 'true';
 }
 
 /**
  * Check if running in E2E test mode (skips CF Access auth but keeps device pairing)
  */
-export function isE2ETestMode(env: MoltbotEnv): boolean {
+export function isE2ETestMode(env: OpenClawEnv): boolean {
   return env.E2E_TEST_MODE === 'true';
 }
 
@@ -84,7 +84,7 @@ export function createAccessMiddleware(options: AccessMiddlewareOptions) {
       if (type === 'html' && redirectOnMissing) {
         return c.redirect(`https://${teamDomain}`, 302);
       }
-      
+
       if (type === 'json') {
         return c.json({
           error: 'Unauthorized',
@@ -110,7 +110,7 @@ export function createAccessMiddleware(options: AccessMiddlewareOptions) {
       await next();
     } catch (err) {
       console.error('Access JWT verification failed:', err);
-      
+
       if (type === 'json') {
         return c.json({
           error: 'Unauthorized',

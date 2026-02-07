@@ -43,7 +43,10 @@
       "ANTHROPIC_API_KEY": {
         "description": "Your [Anthropic API key](https://console.anthropic.com/)."
       },
-      "MOLTBOT_GATEWAY_TOKEN": {
+      "OPENROUTER_API_KEY": {
+        "description": "Your [OpenRouter API key](https://openrouter.ai/)."
+      },
+      "OPENCLAW_GATEWAY_TOKEN": {
         "description": "Token for gateway access. Generate with: openssl rand -hex 32"
       }
     }

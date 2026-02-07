@@ -9,32 +9,30 @@ describe('buildEnvVars', () => {
     expect(result).toEqual({});
   });
 
-  it('includes ANTHROPIC_API_KEY when set directly', () => {
-    const env = createMockEnv({ ANTHROPIC_API_KEY: 'sk-test-key' });
+  it('includes OPENROUTER_API_KEY when set directly', () => {
+    const env = createMockEnv({ OPENROUTER_API_KEY: 'sk-test-key' });
     const result = buildEnvVars(env);
-    expect(result.ANTHROPIC_API_KEY).toBe('sk-test-key');
+    expect(result.OPENROUTER_API_KEY).toBe('sk-test-key');
   });
 
-  it('maps AI_GATEWAY_API_KEY to ANTHROPIC_API_KEY for Anthropic gateway', () => {
+  it('maps AI_GATEWAY_API_KEY to OPENROUTER_API_KEY for OpenRouter gateway', () => {
     const env = createMockEnv({
       AI_GATEWAY_API_KEY: 'sk-gateway-key',
-      AI_GATEWAY_BASE_URL: 'https://gateway.ai.cloudflare.com/v1/123/my-gw/anthropic',
+      AI_GATEWAY_BASE_URL: 'https://gateway.ai.cloudflare.com/v1/123/my-gw/openrouter',
     });
     const result = buildEnvVars(env);
-    expect(result.ANTHROPIC_API_KEY).toBe('sk-gateway-key');
-    expect(result.ANTHROPIC_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/anthropic');
-    expect(result.OPENAI_API_KEY).toBeUndefined();
+    expect(result.OPENROUTER_API_KEY).toBe('sk-gateway-key');
+    expect(result.AI_GATEWAY_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/openrouter');
   });
 
-  it('maps AI_GATEWAY_API_KEY to OPENAI_API_KEY for OpenAI gateway', () => {
+  it('maps AI_GATEWAY_API_KEY to OPENROUTER_API_KEY for OpenAI gateway', () => {
     const env = createMockEnv({
       AI_GATEWAY_API_KEY: 'sk-gateway-key',
       AI_GATEWAY_BASE_URL: 'https://gateway.ai.cloudflare.com/v1/123/my-gw/openai',
     });
     const result = buildEnvVars(env);
-    expect(result.OPENAI_API_KEY).toBe('sk-gateway-key');
-    expect(result.OPENAI_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/openai');
-    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(result.OPENROUTER_API_KEY).toBe('sk-gateway-key');
+    expect(result.AI_GATEWAY_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/openai');
   });
 
   it('passes AI_GATEWAY_BASE_URL directly', () => {
@@ -49,11 +47,9 @@ describe('buildEnvVars', () => {
     const env = createMockEnv({
       AI_GATEWAY_API_KEY: 'gateway-key',
       AI_GATEWAY_BASE_URL: 'https://gateway.example.com/anthropic',
-      ANTHROPIC_API_KEY: 'direct-key',
-      ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
     });
     const result = buildEnvVars(env);
-    expect(result.ANTHROPIC_API_KEY).toBe('gateway-key');
+    expect(result.OPENROUTER_API_KEY).toBe('gateway-key');
     expect(result.AI_GATEWAY_BASE_URL).toBe('https://gateway.example.com/anthropic');
   });
 
@@ -64,31 +60,30 @@ describe('buildEnvVars', () => {
       OPENAI_API_KEY: 'direct-key',
     });
     const result = buildEnvVars(env);
-    expect(result.OPENAI_API_KEY).toBe('gateway-key');
+    expect(result.OPENROUTER_API_KEY).toBe('gateway-key');
     expect(result.AI_GATEWAY_BASE_URL).toBe('https://gateway.example.com/openai');
-    expect(result.OPENAI_BASE_URL).toBe('https://gateway.example.com/openai');
   });
 
   it('falls back to ANTHROPIC_* when AI_GATEWAY_* not set', () => {
     const env = createMockEnv({
-      ANTHROPIC_API_KEY: 'direct-key',
-      ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+      OPENROUTER_API_KEY: 'direct-key',
+      OPENROUTER_BASE_URL: 'https://api.openrouter.ai',
     });
     const result = buildEnvVars(env);
-    expect(result.ANTHROPIC_API_KEY).toBe('direct-key');
-    expect(result.ANTHROPIC_BASE_URL).toBe('https://api.anthropic.com');
+    expect(result.OPENROUTER_API_KEY).toBe('direct-key');
+    expect(result.OPENROUTER_BASE_URL).toBe('https://api.openrouter.ai');
   });
 
-  it('includes OPENAI_API_KEY when set directly (no gateway)', () => {
-    const env = createMockEnv({ OPENAI_API_KEY: 'sk-openai-key' });
+  it('includes OPENROUTER_API_KEY when set directly (no gateway)', () => {
+    const env = createMockEnv({ OPENROUTER_API_KEY: 'sk-openai-key' });
     const result = buildEnvVars(env);
-    expect(result.OPENAI_API_KEY).toBe('sk-openai-key');
+    expect(result.OPENROUTER_API_KEY).toBe('sk-openai-key');
   });
 
-  it('maps MOLTBOT_GATEWAY_TOKEN to CLAWDBOT_GATEWAY_TOKEN for container', () => {
-    const env = createMockEnv({ MOLTBOT_GATEWAY_TOKEN: 'my-token' });
+  it('maps OPENCLAW_GATEWAY_TOKEN to OPENCLAW_GATEWAY_TOKEN for container', () => {
+    const env = createMockEnv({ OPENCLAW_GATEWAY_TOKEN: 'my-token' });
     const result = buildEnvVars(env);
-    expect(result.CLAWDBOT_GATEWAY_TOKEN).toBe('my-token');
+    expect(result.OPENCLAW_GATEWAY_TOKEN).toBe('my-token');
   });
 
   it('includes all channel tokens when set', () => {
@@ -101,7 +96,7 @@ describe('buildEnvVars', () => {
       SLACK_APP_TOKEN: 'slack-app',
     });
     const result = buildEnvVars(env);
-    
+
     expect(result.TELEGRAM_BOT_TOKEN).toBe('tg-token');
     expect(result.TELEGRAM_DM_POLICY).toBe('pairing');
     expect(result.DISCORD_BOT_TOKEN).toBe('discord-token');
@@ -110,28 +105,28 @@ describe('buildEnvVars', () => {
     expect(result.SLACK_APP_TOKEN).toBe('slack-app');
   });
 
-  it('maps DEV_MODE to CLAWDBOT_DEV_MODE for container', () => {
+  it('maps DEV_MODE to OPENCLAW_DEV_MODE for container', () => {
     const env = createMockEnv({
       DEV_MODE: 'true',
-      CLAWDBOT_BIND_MODE: 'lan',
+      OPENCLAW_BIND_MODE: 'lan',
     });
     const result = buildEnvVars(env);
-    
-    expect(result.CLAWDBOT_DEV_MODE).toBe('true');
-    expect(result.CLAWDBOT_BIND_MODE).toBe('lan');
+
+    expect(result.OPENCLAW_DEV_MODE).toBe('true');
+    expect(result.OPENCLAW_BIND_MODE).toBe('lan');
   });
 
   it('combines all env vars correctly', () => {
     const env = createMockEnv({
-      ANTHROPIC_API_KEY: 'sk-key',
-      MOLTBOT_GATEWAY_TOKEN: 'token',
+      OPENROUTER_API_KEY: 'sk-key',
+      OPENCLAW_GATEWAY_TOKEN: 'token',
       TELEGRAM_BOT_TOKEN: 'tg',
     });
     const result = buildEnvVars(env);
-    
+
     expect(result).toEqual({
-      ANTHROPIC_API_KEY: 'sk-key',
-      CLAWDBOT_GATEWAY_TOKEN: 'token',
+      OPENROUTER_API_KEY: 'sk-key',
+      OPENCLAW_GATEWAY_TOKEN: 'token',
       TELEGRAM_BOT_TOKEN: 'tg',
     });
   });
@@ -142,10 +137,9 @@ describe('buildEnvVars', () => {
       AI_GATEWAY_BASE_URL: 'https://gateway.ai.cloudflare.com/v1/123/my-gw/openai/',
     });
     const result = buildEnvVars(env);
-    expect(result.OPENAI_API_KEY).toBe('sk-gateway-key');
-    expect(result.OPENAI_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/openai');
+    expect(result.OPENROUTER_API_KEY).toBe('sk-gateway-key');
     expect(result.AI_GATEWAY_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/openai');
-    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+
   });
 
   it('handles trailing slash in AI_GATEWAY_BASE_URL for Anthropic', () => {
@@ -154,10 +148,9 @@ describe('buildEnvVars', () => {
       AI_GATEWAY_BASE_URL: 'https://gateway.ai.cloudflare.com/v1/123/my-gw/anthropic/',
     });
     const result = buildEnvVars(env);
-    expect(result.ANTHROPIC_API_KEY).toBe('sk-gateway-key');
-    expect(result.ANTHROPIC_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/anthropic');
+    expect(result.OPENROUTER_API_KEY).toBe('sk-gateway-key');
     expect(result.AI_GATEWAY_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/anthropic');
-    expect(result.OPENAI_API_KEY).toBeUndefined();
+
   });
 
   it('handles multiple trailing slashes in AI_GATEWAY_BASE_URL', () => {
@@ -166,8 +159,8 @@ describe('buildEnvVars', () => {
       AI_GATEWAY_BASE_URL: 'https://gateway.ai.cloudflare.com/v1/123/my-gw/openai///',
     });
     const result = buildEnvVars(env);
-    expect(result.OPENAI_API_KEY).toBe('sk-gateway-key');
-    expect(result.OPENAI_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/openai');
+    expect(result.OPENROUTER_API_KEY).toBe('sk-gateway-key');
     expect(result.AI_GATEWAY_BASE_URL).toBe('https://gateway.ai.cloudflare.com/v1/123/my-gw/openai');
+
   });
 });

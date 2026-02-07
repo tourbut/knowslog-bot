@@ -44,7 +44,7 @@ _Cloudflare Sandboxes are available on the [Workers Paid plan](https://dash.clou
 npm install
 
 # Set your API key (direct Anthropic access)
-npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put OPENROUTER_API_KEY
 
 # Or use AI Gateway instead (see "Optional: Cloudflare AI Gateway" below)
 # npx wrangler secret put AI_GATEWAY_API_KEY
@@ -52,9 +52,9 @@ npx wrangler secret put ANTHROPIC_API_KEY
 
 # Generate and set a gateway token (required for remote access)
 # Save this token - you'll need it to access the Control UI
-export MOLTBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)
-echo "Your gateway token: $MOLTBOT_GATEWAY_TOKEN"
-echo "$MOLTBOT_GATEWAY_TOKEN" | npx wrangler secret put MOLTBOT_GATEWAY_TOKEN
+export OPENCLAW_GATEWAY_TOKEN=$(openssl rand -hex 32)
+echo "Your gateway token: $OPENCLAW_GATEWAY_TOKEN"
+echo "$OPENCLAW_GATEWAY_TOKEN" | npx wrangler secret put OPENCLAW_GATEWAY_TOKEN
 
 # Deploy
 npm run deploy
@@ -63,7 +63,7 @@ npm run deploy
 After deploying, open the Control UI with your token:
 
 ```
-https://your-worker.workers.dev/?token=YOUR_GATEWAY_TOKEN
+https://knowslog-bot.scshin88.workers.dev/?token=YOUR_GATEWAY_TOKEN
 ```
 
 Replace `your-worker` with your actual worker subdomain and `YOUR_GATEWAY_TOKEN` with the token you generated above.
@@ -87,7 +87,7 @@ To use the admin UI at `/_admin/` for device management, you need to:
 The easiest way to protect your worker is using the built-in Cloudflare Access integration for workers.dev:
 
 1. Go to the [Workers & Pages dashboard](https://dash.cloudflare.com/?to=/:account/workers-and-pages)
-2. Select your Worker (e.g., `moltbot-sandbox`)
+2. Select your Worker (e.g., `knowslog-bot`)
 3. In **Settings**, under **Domains & Routes**, in the `workers.dev` row, click the meatballs menu (`...`)
 4. Click **Enable Cloudflare Access**
 5. Click **Manage Cloudflare Access** to configure who can access:

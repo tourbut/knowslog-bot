@@ -10,7 +10,7 @@
  * @param pollIntervalMs - How often to check status (default 500ms)
  */
 export async function waitForProcess(
-  proc: { status: string }, 
+  proc: { status: string },
   timeoutMs: number,
   pollIntervalMs: number = 500
 ): Promise<void> {

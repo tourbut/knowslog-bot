@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { createAccessMiddleware } from '../auth';
-import { ensureMoltbotGateway, findExistingMoltbotProcess, mountR2Storage, syncToR2, waitForProcess } from '../gateway';
+import { ensureOpenclawGateway, findExistingOpenclawProcess, mountR2Storage, syncToR2, waitForProcess } from '../gateway';
 import { R2_MOUNT_PATH } from '../config';
 
 // CLI commands can take 10-15 seconds to complete due to WebSocket connection overhead
@@ -25,18 +25,20 @@ adminApi.use('*', createAccessMiddleware({ type: 'json' }));
 
 // GET /api/admin/devices - List pending and paired devices
 adminApi.get('/devices', async (c) => {
+  console.log('[API][devices] List devices');
   const sandbox = c.get('sandbox');
 
   try {
-    // Ensure moltbot is running first
-    await ensureMoltbotGateway(sandbox, c.env);
-
-    // Run moltbot CLI to list devices (CLI is still named clawdbot until upstream renames)
+    // Ensure openclaw is running first
+    await ensureOpenclawGateway(sandbox, c.env);
+    console.log('[API][devices] OpenClaw gateway is running');
+    // Run openclaw CLI to list devices (CLI is still named clawdbot until upstream renames)
     // Must specify --url to connect to the gateway running in the same container
-    const proc = await sandbox.startProcess('clawdbot devices list --json --url ws://localhost:18789');
+    const proc = await sandbox.startProcess(`openclaw devices list --json --url ws://localhost:18789 --token ${c.env.OPENCLAW_GATEWAY_TOKEN}`);
     await waitForProcess(proc, CLI_TIMEOUT_MS);
 
     const logs = await proc.getLogs();
+    console.log('[API][devices] OpenClaw CLI output:', logs);
     const stdout = logs.stdout || '';
     const stderr = logs.stderr || '';
 
@@ -81,19 +83,23 @@ adminApi.post('/devices/:requestId/approve', async (c) => {
   }
 
   try {
-    // Ensure moltbot is running first
-    await ensureMoltbotGateway(sandbox, c.env);
+    console.log('[API][devices] Approving device:', requestId);
+    // Ensure openclaw is running first
+    await ensureOpenclawGateway(sandbox, c.env);
 
-    // Run moltbot CLI to approve the device (CLI is still named clawdbot)
-    const proc = await sandbox.startProcess(`clawdbot devices approve ${requestId} --url ws://localhost:18789`);
+    // Run openclaw CLI to approve the device (CLI is still named clawdbot)
+    const proc = await sandbox.startProcess(`openclaw devices approve ${requestId} --url ws://localhost:18789 --token ${c.env.OPENCLAW_GATEWAY_TOKEN}`);
     await waitForProcess(proc, CLI_TIMEOUT_MS);
 
     const logs = await proc.getLogs();
+    console.log('[API][devices] OpenClaw CLI output:', logs);
+
     const stdout = logs.stdout || '';
     const stderr = logs.stderr || '';
 
     // Check for success indicators (case-insensitive, CLI outputs "Approved ...")
     const success = stdout.toLowerCase().includes('approved') || proc.exitCode === 0;
+    console.log('[API][devices] Device approved:', success);
 
     return c.json({
       success,
@@ -104,6 +110,7 @@ adminApi.post('/devices/:requestId/approve', async (c) => {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[API][devices] Error approving device:', errorMessage);
     return c.json({ error: errorMessage }, 500);
   }
 });
@@ -113,11 +120,11 @@ adminApi.post('/devices/approve-all', async (c) => {
   const sandbox = c.get('sandbox');
 
   try {
-    // Ensure moltbot is running first
-    await ensureMoltbotGateway(sandbox, c.env);
+    // Ensure openclaw is running first
+    await ensureOpenclawGateway(sandbox, c.env);
 
     // First, get the list of pending devices (CLI is still named clawdbot)
-    const listProc = await sandbox.startProcess('clawdbot devices list --json --url ws://localhost:18789');
+    const listProc = await sandbox.startProcess(`openclaw devices list --json --url ws://localhost:18789 --token ${c.env.OPENCLAW_GATEWAY_TOKEN}`);
     await waitForProcess(listProc, CLI_TIMEOUT_MS);
 
     const listLogs = await listProc.getLogs();
@@ -135,16 +142,21 @@ adminApi.post('/devices/approve-all', async (c) => {
       return c.json({ error: 'Failed to parse device list', raw: stdout }, 500);
     }
 
+    console.log('[API][devices] Approve all pending devices');
+
     if (pending.length === 0) {
+      console.log('[API][devices] No pending devices to approve');
       return c.json({ approved: [], message: 'No pending devices to approve' });
     }
+
+    console.log(`[API][devices] Found ${pending.length} pending devices to approve`);
 
     // Approve each pending device
     const results: Array<{ requestId: string; success: boolean; error?: string }> = [];
 
     for (const device of pending) {
       try {
-        const approveProc = await sandbox.startProcess(`clawdbot devices approve ${device.requestId} --url ws://localhost:18789`);
+        const approveProc = await sandbox.startProcess(`openclaw devices approve ${device.requestId} --url ws://localhost:18789 --token ${c.env.OPENCLAW_GATEWAY_TOKEN}`);
         await waitForProcess(approveProc, CLI_TIMEOUT_MS);
 
         const approveLogs = await approveProc.getLogs();
@@ -168,16 +180,18 @@ adminApi.post('/devices/approve-all', async (c) => {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[API][devices] Error approving all devices:', errorMessage);
     return c.json({ error: errorMessage }, 500);
   }
 });
 
 // GET /api/admin/storage - Get R2 storage status and last sync time
 adminApi.get('/storage', async (c) => {
+  console.log('[API][storage] Check R2 storage status');
   const sandbox = c.get('sandbox');
   const hasCredentials = !!(
-    c.env.R2_ACCESS_KEY_ID && 
-    c.env.R2_SECRET_ACCESS_KEY && 
+    c.env.R2_ACCESS_KEY_ID &&
+    c.env.R2_SECRET_ACCESS_KEY &&
     c.env.CF_ACCOUNT_ID
   );
 
@@ -194,7 +208,7 @@ adminApi.get('/storage', async (c) => {
     try {
       // Mount R2 if not already mounted
       await mountR2Storage(sandbox, c.env);
-      
+
       // Check for sync marker file
       const proc = await sandbox.startProcess(`cat ${R2_MOUNT_PATH}/.last-sync 2>/dev/null || echo ""`);
       await waitForProcess(proc, 5000);
@@ -212,7 +226,7 @@ adminApi.get('/storage', async (c) => {
     configured: hasCredentials,
     missing: missing.length > 0 ? missing : undefined,
     lastSync,
-    message: hasCredentials 
+    message: hasCredentials
       ? 'R2 storage is configured. Your data will persist across container restarts.'
       : 'R2 storage is not configured. Paired devices and conversations will be lost when the container restarts.',
   });
@@ -220,10 +234,11 @@ adminApi.get('/storage', async (c) => {
 
 // POST /api/admin/storage/sync - Trigger a manual sync to R2
 adminApi.post('/storage/sync', async (c) => {
+  console.log('[API][storage] Trigger manual sync');
   const sandbox = c.get('sandbox');
-  
+
   const result = await syncToR2(sandbox, c.env);
-  
+
   if (result.success) {
     return c.json({
       success: true,
@@ -232,6 +247,7 @@ adminApi.post('/storage/sync', async (c) => {
     });
   } else {
     const status = result.error?.includes('not configured') ? 400 : 500;
+    console.error('[API][storage] Sync failed:', result.error);
     return c.json({
       success: false,
       error: result.error,
@@ -242,12 +258,13 @@ adminApi.post('/storage/sync', async (c) => {
 
 // POST /api/admin/gateway/restart - Kill the current gateway and start a new one
 adminApi.post('/gateway/restart', async (c) => {
+  console.log('[API][gateway] Restart requested');
   const sandbox = c.get('sandbox');
 
   try {
     // Find and kill the existing gateway process
-    const existingProcess = await findExistingMoltbotProcess(sandbox);
-    
+    const existingProcess = await findExistingOpenclawProcess(sandbox);
+
     if (existingProcess) {
       console.log('Killing existing gateway process:', existingProcess.id);
       try {
@@ -260,20 +277,21 @@ adminApi.post('/gateway/restart', async (c) => {
     }
 
     // Start a new gateway in the background
-    const bootPromise = ensureMoltbotGateway(sandbox, c.env).catch((err) => {
+    const bootPromise = ensureOpenclawGateway(sandbox, c.env).catch((err) => {
       console.error('Gateway restart failed:', err);
     });
     c.executionCtx.waitUntil(bootPromise);
 
     return c.json({
       success: true,
-      message: existingProcess 
+      message: existingProcess
         ? 'Gateway process killed, new instance starting...'
         : 'No existing process found, starting new instance...',
       previousProcessId: existingProcess?.id,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[API][gateway] Restart failed:', errorMessage);
     return c.json({ error: errorMessage }, 500);
   }
 });

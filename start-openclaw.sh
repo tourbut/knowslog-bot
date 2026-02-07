@@ -1,26 +1,26 @@
 #!/bin/bash
-# Startup script for Moltbot in Cloudflare Sandbox
+# Startup script for Openclaw in Cloudflare Sandbox
 # This script:
 # 1. Restores config from R2 backup if available
-# 2. Configures moltbot from environment variables
+# 2. Configures Openclaw from environment variables
 # 3. Starts a background sync to backup config to R2
 # 4. Starts the gateway
 
 set -e
 
-# Check if clawdbot gateway is already running - bail early if so
+# Check if Openclaw gateway is already running - bail early if so
 # Note: CLI is still named "clawdbot" until upstream renames it
-if pgrep -f "clawdbot gateway" > /dev/null 2>&1; then
-    echo "Moltbot gateway is already running, exiting."
+if pgrep -f "openclaw gateway" > /dev/null 2>&1; then
+    echo "Openclaw gateway is already running, exiting."
     exit 0
 fi
 
 # Paths (clawdbot paths are used internally - upstream hasn't renamed yet)
-CONFIG_DIR="/root/.clawdbot"
-CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
-TEMPLATE_DIR="/root/.clawdbot-templates"
-TEMPLATE_FILE="$TEMPLATE_DIR/moltbot.json.template"
-BACKUP_DIR="/data/moltbot"
+CONFIG_DIR="/root/.openclaw"
+CONFIG_FILE="$CONFIG_DIR/openclaw.json"
+TEMPLATE_DIR="/root/.openclaw-templates"
+TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
+BACKUP_DIR="/data/openclaw"
 
 echo "Config directory: $CONFIG_DIR"
 echo "Backup directory: $BACKUP_DIR"
@@ -72,15 +72,15 @@ should_restore_from_r2() {
     fi
 }
 
-if [ -f "$BACKUP_DIR/clawdbot/clawdbot.json" ]; then
+if [ -f "$BACKUP_DIR/openclaw/openclaw.json" ]; then
     if should_restore_from_r2; then
-        echo "Restoring from R2 backup at $BACKUP_DIR/clawdbot..."
-        cp -a "$BACKUP_DIR/clawdbot/." "$CONFIG_DIR/"
+        echo "Restoring from R2 backup at $BACKUP_DIR/openclaw..."
+        cp -a "$BACKUP_DIR/openclaw/." "$CONFIG_DIR/"
         # Copy the sync timestamp to local so we know what version we have
         cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
         echo "Restored config from R2 backup"
     fi
-elif [ -f "$BACKUP_DIR/clawdbot.json" ]; then
+elif [ -f "$BACKUP_DIR/openclaw.json" ]; then
     # Legacy backup format (flat structure)
     if should_restore_from_r2; then
         echo "Restoring from legacy R2 backup at $BACKUP_DIR..."
@@ -95,7 +95,7 @@ else
 fi
 
 # Restore skills from R2 backup if available (only if R2 is newer)
-SKILLS_DIR="/root/clawd/skills"
+SKILLS_DIR="/root/openclaw/skills"
 if [ -d "$BACKUP_DIR/skills" ] && [ "$(ls -A $BACKUP_DIR/skills 2>/dev/null)" ]; then
     if should_restore_from_r2; then
         echo "Restoring skills from $BACKUP_DIR/skills..."
@@ -104,6 +104,20 @@ if [ -d "$BACKUP_DIR/skills" ] && [ "$(ls -A $BACKUP_DIR/skills 2>/dev/null)" ];
         echo "Restored skills from R2 backup"
     fi
 fi
+
+# Restore workspace from R2 backup if available (only if R2 is newer)
+WORKSPACE_DIR="/root/openclaw/workspace"
+# Always ensure workspace directory exists
+mkdir -p "$WORKSPACE_DIR"
+
+if [ -d "$BACKUP_DIR/workspace" ] && [ "$(ls -A $BACKUP_DIR/workspace 2>/dev/null)" ]; then
+    if should_restore_from_r2; then
+        echo "Restoring workspace from $BACKUP_DIR/workspace..."
+        cp -a "$BACKUP_DIR/workspace/." "$WORKSPACE_DIR/"
+        echo "Restored workspace from R2 backup"
+    fi
+fi
+
 
 # If config file still doesn't exist, create from template
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -116,7 +130,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 {
   "agents": {
     "defaults": {
-      "workspace": "/root/clawd"
+      "workspace": "/root/openclaw"
     }
   },
   "gateway": {
@@ -136,7 +150,7 @@ fi
 node << EOFNODE
 const fs = require('fs');
 
-const configPath = '/root/.clawdbot/clawdbot.json';
+const configPath = '/root/.openclaw/openclaw.json';
 console.log('Updating config at:', configPath);
 let config = {};
 
@@ -150,20 +164,11 @@ try {
 config.agents = config.agents || {};
 config.agents.defaults = config.agents.defaults || {};
 config.agents.defaults.model = config.agents.defaults.model || {};
+config.agents.defaults.models = config.agents.defaults.models || {};
 config.gateway = config.gateway || {};
 config.channels = config.channels || {};
-
-// Clean up any broken anthropic provider config from previous runs
-// (older versions didn't include required 'name' field)
-if (config.models?.providers?.anthropic?.models) {
-    const hasInvalidModels = config.models.providers.anthropic.models.some(m => !m.name);
-    if (hasInvalidModels) {
-        console.log('Removing broken anthropic provider config (missing model names)');
-        delete config.models.providers.anthropic;
-    }
-}
-
-
+config.models = config.models || {};
+config.models.providers = config.models.providers || {};
 
 // Gateway configuration
 config.gateway.port = 18789;
@@ -171,24 +176,25 @@ config.gateway.mode = 'local';
 config.gateway.trustedProxies = ['10.1.0.0'];
 
 // Set gateway token if provided
-if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
+if (process.env.OPENCLAW_GATEWAY_TOKEN) {
     config.gateway.auth = config.gateway.auth || {};
-    config.gateway.auth.token = process.env.CLAWDBOT_GATEWAY_TOKEN;
+    config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 }
 
 // Allow insecure auth for dev mode
-if (process.env.CLAWDBOT_DEV_MODE === 'true') {
+if (process.env.OPENCLAW_DEV_MODE === 'true') {
     config.gateway.controlUi = config.gateway.controlUi || {};
     config.gateway.controlUi.allowInsecureAuth = true;
 }
 
 // Telegram configuration
 if (process.env.TELEGRAM_BOT_TOKEN) {
-    config.channels.telegram = config.channels.telegram || {};
-    config.channels.telegram.botToken = process.env.TELEGRAM_BOT_TOKEN;
-    config.channels.telegram.enabled = true;
+    config.channels.telegram = {
+        botToken: process.env.TELEGRAM_BOT_TOKEN,
+        enabled: true
+    };
+
     const telegramDmPolicy = process.env.TELEGRAM_DM_POLICY || 'pairing';
-    config.channels.telegram.dmPolicy = telegramDmPolicy;
     if (process.env.TELEGRAM_DM_ALLOW_FROM) {
         // Explicit allowlist: "123,456,789" → ['123', '456', '789']
         config.channels.telegram.allowFrom = process.env.TELEGRAM_DM_ALLOW_FROM.split(',');
@@ -226,58 +232,35 @@ if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN) {
 // Usage: Set AI_GATEWAY_BASE_URL or ANTHROPIC_BASE_URL to your endpoint like:
 //   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic
 //   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
-const baseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.ANTHROPIC_BASE_URL || '').replace(/\/+$/, '');
-const isOpenAI = baseUrl.endsWith('/openai');
+const aiGatewayBaseUrl = (process.env.AI_GATEWAY_BASE_URL || '').replace(/\/+$/, '');
 
-if (isOpenAI) {
-    // Create custom openai provider config with baseUrl override
-    // Omit apiKey so moltbot falls back to OPENAI_API_KEY env var
-    console.log('Configuring OpenAI provider with base URL:', baseUrl);
-    config.models = config.models || {};
-    config.models.providers = config.models.providers || {};
-    config.models.providers.openai = {
-        baseUrl: baseUrl,
-        api: 'openai-responses',
-        models: [
-            { id: 'gpt-5.2', name: 'GPT-5.2', contextWindow: 200000 },
-            { id: 'gpt-5', name: 'GPT-5', contextWindow: 200000 },
-            { id: 'gpt-4.5-preview', name: 'GPT-4.5 Preview', contextWindow: 128000 },
-        ]
-    };
-    // Add models to the allowlist so they appear in /models
-    config.agents.defaults.models = config.agents.defaults.models || {};
-    config.agents.defaults.models['openai/gpt-5.2'] = { alias: 'GPT-5.2' };
-    config.agents.defaults.models['openai/gpt-5'] = { alias: 'GPT-5' };
-    config.agents.defaults.models['openai/gpt-4.5-preview'] = { alias: 'GPT-4.5' };
-    config.agents.defaults.model.primary = 'openai/gpt-5.2';
-} else if (baseUrl) {
-    console.log('Configuring Anthropic provider with base URL:', baseUrl);
-    config.models = config.models || {};
-    config.models.providers = config.models.providers || {};
-    const providerConfig = {
-        baseUrl: baseUrl,
-        api: 'anthropic-messages',
-        models: [
-            { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', contextWindow: 200000 },
-            { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000 },
-            { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
-        ]
-    };
-    // Include API key in provider config if set (required when using custom baseUrl)
-    if (process.env.ANTHROPIC_API_KEY) {
-        providerConfig.apiKey = process.env.ANTHROPIC_API_KEY;
-    }
-    config.models.providers.anthropic = providerConfig;
-    // Add models to the allowlist so they appear in /models
-    config.agents.defaults.models = config.agents.defaults.models || {};
-    config.agents.defaults.models['anthropic/claude-opus-4-5-20251101'] = { alias: 'Opus 4.5' };
-    config.agents.defaults.models['anthropic/claude-sonnet-4-5-20250929'] = { alias: 'Sonnet 4.5' };
-    config.agents.defaults.models['anthropic/claude-haiku-4-5-20251001'] = { alias: 'Haiku 4.5' };
-    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-5-20251101';
+let orBaseUrl = 'https://openrouter.ai/api/v1';
+if (aiGatewayBaseUrl !== '') {
+    orBaseUrl = aiGatewayBaseUrl + '/openrouter';
+    console.log('  - Using Base URL Override:', orBaseUrl);
 } else {
-    // Default to Anthropic without custom base URL (uses built-in pi-ai catalog)
-    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-5';
+    console.log('  - Using Default Base URL:', orBaseUrl);
 }
+
+config.models.providers.openrouter = {
+        baseUrl: orBaseUrl,
+        apiKey: process.env.OPENROUTER_API_KEY,
+        models: [
+            { id: 'openrouter/auto', name: 'Auto' },
+            { id: 'openrouter/x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast' },
+            { id: 'openrouter/anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
+            { id: 'openrouter/anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5' }
+        ]
+    };
+    
+// Alias 설정 (모델 목록에 표시)
+config.agents.defaults.models['openrouter/x-ai/grok-4.1-fast'] = { alias: 'Grok 4.1 Fast' };
+config.agents.defaults.models['openrouter/openrouter/auto'] = { alias: 'Auto' };
+config.agents.defaults.models['openrouter/anthropic/claude-sonnet-4-5'] = { alias: 'Sonnet 4.5' };
+config.agents.defaults.models['openrouter/anthropic/claude-haiku-4-5'] = { alias: 'Haiku 4.5' };
+    
+// 기본 모델 설정
+config.agents.defaults.model.primary = 'openrouter/x-ai/grok-4.1-fast';
 
 // Write updated config
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -289,20 +272,20 @@ EOFNODE
 # START GATEWAY
 # ============================================================
 # Note: R2 backup sync is handled by the Worker's cron trigger
-echo "Starting Moltbot Gateway..."
+echo "Starting Openclaw Gateway..."
 echo "Gateway will be available on port 18789"
 
 # Clean up stale lock files
-rm -f /tmp/clawdbot-gateway.lock 2>/dev/null || true
+rm -f /tmp/openclaw-gateway.lock 2>/dev/null || true
 rm -f "$CONFIG_DIR/gateway.lock" 2>/dev/null || true
 
 BIND_MODE="lan"
-echo "Dev mode: ${CLAWDBOT_DEV_MODE:-false}, Bind mode: $BIND_MODE"
+echo "Dev mode: ${OPENCLAW_DEV_MODE:-false}, Bind mode: $BIND_MODE"
 
-if [ -n "$CLAWDBOT_GATEWAY_TOKEN" ]; then
+if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
     echo "Starting gateway with token auth..."
-    exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$CLAWDBOT_GATEWAY_TOKEN"
+    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$OPENCLAW_GATEWAY_TOKEN"
 else
     echo "Starting gateway with device pairing (no token)..."
-    exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE"
+    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE"
 fi
